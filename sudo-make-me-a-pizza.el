@@ -8,12 +8,12 @@
 
 ;; /restaurants/?delivery_area=00000
 
-(defvar pizza-mode-map nil)
-(setf pizza-mode-map (let ((map (make-sparse-keymap)))
-                       (define-key map (kbd "n") 'pizza-mode-next-item)
-                       (define-key map (kbd "p") 'pizza-mode-prev-item)
-                       (define-key map (kbd "RET") 'pizza-mode-item-action)
-                       map))
+(defvar pizza-search-mode-map nil)
+(setf pizza-search-mode-map (let ((map (make-sparse-keymap)))
+                              (define-key map (kbd "n") 'pizza-mode-next-item)
+                              (define-key map (kbd "p") 'pizza-mode-prev-item)
+                              (define-key map (kbd "RET") 'pizza-mode-item-action)
+                              map))
 
 (defun pizza-search-buffer (delivery-area)
   (get-buffer-create (concat "*Pizza near " delivery-area "*")))
@@ -21,7 +21,7 @@
 (defun pizza-restaurant-buffer (restaurant-name)
   (get-buffer-create (concat "*Pizza at " restaurant-name "*")))
 
-(defun pizza-mode (delivery-area)
+(defun pizza-search (delivery-area)
   (interactive (list (completing-read "Search: " '() nil nil)))
   (switch-to-buffer (pizza-search-buffer delivery-area))
   (let ((buffer (current-buffer)))
@@ -36,7 +36,7 @@
 
                                      (pizza-insert-restaurants data delivery-area)
                                      ))))
-    (use-local-map pizza-mode-map)
+    (use-local-map pizza-search-mode-map)
     ))
 
 (defun pizza-insert-restaurants (data delivery-area)
