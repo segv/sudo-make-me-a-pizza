@@ -14,6 +14,9 @@ M-x pizza-search RET <a zip code>
 
 hit `RET` on one of the restaurants. 
 
-(NOT YET IMPLEMENTED): from the restaurant buffer use `+` and `-` to
-add remove items to the cart, use `C-c C-c` to submit the order (NB:
-this is binding and asks for no confirmation)
+from the restaurant buffer use `+` and `-` to add remove items to the
+cart.
+
+(NOT YET IMPLEMENTED): type in delivery address in "Delivery address"
+field, use `C-c C-c` to submit the order (NB: this is binding and asks
+for no confirmation)

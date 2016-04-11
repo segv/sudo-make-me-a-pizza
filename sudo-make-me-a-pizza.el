@@ -10,9 +10,7 @@
 
 (defvar pizza-search-mode-map nil)
 (setf pizza-search-mode-map (let ((map (make-sparse-keymap)))
-                              (define-key map (kbd "n") 'pizza-mode-next-item)
-                              (define-key map (kbd "p") 'pizza-mode-prev-item)
-                              (define-key map (kbd "RET") 'pizza-mode-item-action)
+                              (define-key map (kbd "RET") 'pizza-mode-goto-restaurant)
                               map))
 
 (defun pizza-search-buffer (delivery-area)
@@ -51,20 +49,30 @@
                             'pizza-restaurant-id id
                             'pizza-restaurant-name name))
      do (insert "\n"))
-    (insert (format "%s" data))))
+    ;;(insert (format "%s" data))
+    (goto-char (point-min))))
 
-(defun pizza-mode-item-action ()
+(defun pizza-mode-goto-restaurant ()
   (interactive)
-  (if (get-text-property (point) 'pizza-restaurant-id)
-      (pizza-restaurant-mode (get-text-property (point) 'pizza-restaurant-id)
-                             (get-text-property (point) 'pizza-restaurant-name)
-                             )))
+  (pizza-restaurant-mode (get-text-property (point) 'pizza-restaurant-id)
+                         (get-text-property (point) 'pizza-restaurant-name)))
+
+(defvar pizza-restaurant-mode-order nil)
+(make-variable-buffer-local 'pizza-restaurant-mode-order)
+
+(defvar pizza-restaurant-mode-map nil)
+(setf pizza-restaurant-mode-map (let ((map (make-sparse-keymap)))
+                                  (define-key map (kbd "+") 'pizza-restaurant-mode-add-item)
+                                  (define-key map (kbd "-") 'pizza-restaurant-mode-remove-item)
+                                  (define-key map (kbd "g") 'pizza-restaurant-mode-refresh-list)
+                                  map))
 
 (defun pizza-restaurant-mode (restaurant-id restaurant-name)
   (switch-to-buffer (pizza-restaurant-buffer restaurant-name))
   (let ((buffer (current-buffer)))
     (delete-region (point-min) (point-max))
     (insert "Looking up menu at " restaurant-name)
+    (use-local-map pizza-restaurant-mode-map)
     (request (concat pizza-endpoint "/restaurants/" restaurant-id "/")
              :type "GET"
              :parser 'json-read
@@ -72,16 +80,21 @@
                                    (with-current-buffer buffer
                                      (delete-region (point-min) (point-max))
                                      (pizza-insert-restaurant data)
-                                     ;(insert (format "%s" data))
+                                     ;;(insert (format "%s" data))
                                      ))))))
 
 (defun pizza-insert-restaurant (restaurant)
+  (setf pizza-restaurant-mode-order '((items . ())
+                                      (customer . ())))
+  (insert "Delivery Address:\n")
+  (insert "--\n")
   (insert (decode-coding-string (cdr (assoc 'name restaurant)) 'utf-8) "\n")
   (let ((menu (cdr (assoc 'menu restaurant))))
     (loop
      for section across (cdr (assoc 'sections menu))
      do (insert (decode-coding-string (cdr (assoc 'name section)) 'utf-8) "\n")
      do (loop for item across (cdr (assoc 'items section))
+              for start = (point)
               for sizes = (cdr (assoc 'sizes item))
               do (insert "  "
                          (decode-coding-string (cdr (assoc 'name item)) 'utf-8)
@@ -90,4 +103,21 @@
                      (insert (format "%s" (cdr (assoc 'price (aref sizes 0)))))
                    (loop for size across sizes
                          do (insert "%s %s" (cdr (assoc 'price size 0)) (cdr (assoc 'name sie)))))
-              do (insert "\n")))))
+              do (set-text-properties start (point)
+                                      (list 'pizza-mode-item-id (cdr (assoc 'id item))))
+              do (insert "\n"))
+     finally (goto-char (point-min)))))
+
+(defun pizza-restaurant-mode-add-item (&optional delta)
+  (interactive (list 1))
+  (let ((item-id (get-text-property (point) 'pizza-mode-item-id)))
+    (if item-id
+        (let* ((cell (cl-assoc item-id (cdr (assoc 'items pizza-restaurant-mode-order)))))
+          (if cell
+              (setf (cdr cell) (+ (cdr cell) delta))
+            (push (cons item-id 1) (cdr (assoc 'items pizza-restaurant-mode-order)))))
+      (message "No item at point"))))
+
+(defun pizza-restaurant-mode-remove-item ()
+  (interactive)
+  (pizza-restaurant-mode-add-item -1))
