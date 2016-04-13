@@ -57,21 +57,20 @@
   (pizza-restaurant-mode (get-text-property (point) 'pizza-restaurant-id)
                          (get-text-property (point) 'pizza-restaurant-name)))
 
-(defvar pizza-restaurant-mode-order nil)
-(make-variable-buffer-local 'pizza-restaurant-mode-order)
-
 (defvar pizza-restaurant-mode-map nil)
 (setf pizza-restaurant-mode-map (let ((map (make-sparse-keymap)))
                                   (define-key map (kbd "+") 'pizza-restaurant-mode-add-item)
                                   (define-key map (kbd "-") 'pizza-restaurant-mode-remove-item)
                                   (define-key map (kbd "g") 'pizza-restaurant-mode-refresh-list)
+                                  (define-key map (kbd "TAB") 'widget-forward)
+                                  (define-key map (kbd "C-TAB") 'widget-backward)
                                   map))
 
 (defun pizza-restaurant-mode (restaurant-id restaurant-name)
   (switch-to-buffer (pizza-restaurant-buffer restaurant-name))
   (let ((buffer (current-buffer)))
     (delete-region (point-min) (point-max))
-    (insert "Looking up menu at " restaurant-name)
+    (widget-insert "Looking up menu at " restaurant-name)
     (use-local-map pizza-restaurant-mode-map)
     (request (concat pizza-endpoint "/restaurants/" restaurant-id "/")
              :type "GET"
@@ -82,42 +81,76 @@
                                      (pizza-insert-restaurant data)
                                      ;;(insert (format "%s" data))
                                      ))))))
+(defvar pizza-restaurant-mode-order nil)
+(make-variable-buffer-local 'pizza-restaurant-mode-order)
+
+(defvar pizza-restaurant-mode-restaurant nil)
+(make-variable-buffer-local 'pizza-restaurant-mode-restaurant)
 
 (defun pizza-insert-restaurant (restaurant)
-  (setf pizza-restaurant-mode-order '((items . ())
-                                      (customer . ())))
+  (setf pizza-restaurant-mode-order '((items . ()))
+        pizza-restaurant-mode-restaurant restaurant)
+  (insert (decode-coding-string (cdr (assoc 'name restaurant)) 'utf-8))
+  (insert "\n")
   (insert "Delivery Address:\n")
-  (insert "--\n")
-  (insert (decode-coding-string (cdr (assoc 'name restaurant)) 'utf-8) "\n")
   (let ((menu (cdr (assoc 'menu restaurant))))
     (loop
      for section across (cdr (assoc 'sections menu))
      do (insert (decode-coding-string (cdr (assoc 'name section)) 'utf-8) "\n")
      do (loop for item across (cdr (assoc 'items section))
-              for start = (point)
-              for sizes = (cdr (assoc 'sizes item))
-              do (insert "  "
-                         (decode-coding-string (cdr (assoc 'name item)) 'utf-8)
-                         " - ")
-              do (if (= 1 (length sizes))
-                     (insert (format "%s" (cdr (assoc 'price (aref sizes 0)))))
-                   (loop for size across sizes
-                         do (insert "%s %s" (cdr (assoc 'price size 0)) (cdr (assoc 'name sie)))))
-              do (set-text-properties start (point)
-                                      (list 'pizza-mode-item-id (cdr (assoc 'id item))))
-              do (insert "\n"))
+              do (pizza-restaurant-mode-insert-item item))
      finally (goto-char (point-min)))))
+
+(defun pizza-restaurant-mode-insert-item (item)
+  (let ((sizes (cdr (assoc 'sizes item))))
+
+    (loop for size across sizes
+          for start = (point)
+          do (insert "    ")
+          do (set-text-properties start
+                                  (point)
+                                  (list 'pizza-restaurant-mode-menu-item-quantity-marker t))
+          do (insert (decode-coding-string (cdr (assoc 'name item)) 'utf-8)
+                     " - ")
+          do (when (< 1 (length sizes))
+               (insert "%s " (cdr (assoc 'name size))))
+          do (insert (format "%s" (cdr (assoc 'price size))))
+          do (set-text-properties start (point) (list 'pizza-restaurant-mode-menu-item
+                                                      (list (cons 'item item)
+                                                            (cons 'size size)
+                                                            (cons 'quantity 0)
+                                                            (cons 'start-point start))))
+          do (insert "\n"))))
 
 (defun pizza-restaurant-mode-add-item (&optional delta)
   (interactive (list 1))
-  (let ((item-id (get-text-property (point) 'pizza-mode-item-id)))
-    (if item-id
-        (let* ((cell (cl-assoc item-id (cdr (assoc 'items pizza-restaurant-mode-order)))))
-          (if cell
-              (setf (cdr cell) (+ (cdr cell) delta))
-            (push (cons item-id 1) (cdr (assoc 'items pizza-restaurant-mode-order)))))
+  (let ((item (get-text-property (point) 'pizza-restaurant-mode-menu-item)))
+    (if item
+        (progn
+          (incf (cdr (assoc 'quantity item)) delta)
+          (goto-char (cdr (assoc 'start-point item)))
+          (delete-region (point) (next-single-property-change (point) 'pizza-restaurant-mode-menu-item-quantity-marker))
+          (insert (format " %dx " (cdr (assoc 'quantity item))))
+          (set-text-properties start
+                               (point)
+                               (list 'pizza-restaurant-mode-menu-item-quantity-marker t )))
       (message "No item at point"))))
 
 (defun pizza-restaurant-mode-remove-item ()
   (interactive)
   (pizza-restaurant-mode-add-item -1))
+
+(defun pizza-restaurant-mode-order ()
+  (interactive)
+
+  (goto-char (point-min))
+  (while (< (1+ (point)) (point-max))
+    (let ((prev-item (get-text-property (point) 'pizza-restaurant-mode-menu-item))
+          (item (get-text-property (1+ (point)) 'pizza-restaurant-mode-menu-item)))
+      (when (and (not prev-item) item)
+        (when (< 0 (cdr (assoc 'quantity item)))
+          (let ((item (cdr (assoc 'item item)))
+                (quantity (cdr (assoc 'quantity item))))
+            (message "%s %s" quantity
+                     (decode-coding-string (cdr (assoc 'name item)) 'utf-8))))))
+    (forward-char 1)))

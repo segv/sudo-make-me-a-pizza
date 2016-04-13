@@ -2,6 +2,8 @@
 
 order food from within emacs.
 
+NB: This is some of the ugliest code i've ever written. sorry.
+
 ## Installation
 
 Eventually it'll be on melpa, till then, it's just one file, download and `(add-to-list 'load-path "/path/to/sudo-make-me-a-pizza")`
